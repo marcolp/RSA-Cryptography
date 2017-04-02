@@ -62,6 +62,8 @@ public class CryptoMultiEchoServer {
                 // However, we show here how to send and receive serializable java objects                    
                 ObjectInputStream objectInput = new ObjectInputStream(incoming.getInputStream());
                 ObjectOutputStream objectOutput = new ObjectOutputStream(incoming.getOutputStream());
+                
+                
                 // read the file of random bytes from which we can derive an AES key
                 byte[] randomBytes;
                 try {
@@ -71,30 +73,51 @@ public class CryptoMultiEchoServer {
                     System.out.println("problem reading the randomBytes file");
                     return;
                 }
+                
+                
                 // get the initialization vector from the client
                 // each client will have a different vector
                 byte[] iv = (byte[]) objectInput.readObject();
+                
                 // we will use AES encryption, CBC chaining and PCS5 block padding
-                Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+                Cipher decryptingCipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
                 // generate an AES key derived from randomBytes array
                 SecretKeySpec secretKey = new SecretKeySpec(randomBytes, "AES");
                 // initialize with a specific vector instead of a random one
-                cipher.init(Cipher.DECRYPT_MODE, secretKey, new IvParameterSpec(iv));
+                decryptingCipher.init(Cipher.DECRYPT_MODE, secretKey, new IvParameterSpec(iv));
 
+                
+                Cipher encrpytingCipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+                encrpytingCipher.init(Cipher.ENCRYPT_MODE, secretKey);
+                
+//                SecretKeySpec encryptionKey = new SecretKeySpec(randomBytes, "AES");
+//                if(encryptionKey == secretKey) System.out.println("==");
+//                else if(encryptionKey.equals(secretKey)) System.out.println(".equals");
+                
                 // keep echoing the strings received until
                 // receiving the string "BYE" which will break
                 // out of the for loop and close the thread
                 for (;;) {
                     // get the encrypted bytes from the client as an object
-                    byte[] encryptedByte = (byte[]) objectInput.readObject();
+                    byte[] toDecryptBytes = (byte[]) objectInput.readObject();
                     // decrypt the bytes
-                    String str = new String(cipher.doFinal(encryptedByte));
+                    String str = new String(decryptingCipher.doFinal(toDecryptBytes));
                     // reply to the client with an echo of the string
                     // this reply is not encrypted, you need to modify this
                     // by encrypting the reply
-                    out.println("Echo: " + str);
-                    out.flush();
+                    
+                    
+                    String echoStr = "Echo: " + str;
+                    //Encrypt whatever we are going to send
+                    byte[] enrtyptedBytes = encrpytingCipher.doFinal(echoStr.getBytes());
+                    //Send the encrypted bytes to the client
+                    objectOutput.writeObject(enrtyptedBytes);
+                    
+                    //NO LONGER NEEDED
+//                    out.println("Echo: " + str);
+//                    out.flush();
                     // print the message received from the client
+                    
                     System.out.println("Received from session " + id + ": " + str);
                     if (str.trim().equals("BYE")) {
                         break;
