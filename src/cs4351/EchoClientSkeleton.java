@@ -3,6 +3,8 @@ package cs4351;
 import java.io.*;
 import java.net.*;
 import java.security.*;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.X509EncodedKeySpec;
 import java.util.*;
 import javax.crypto.*;
 import javax.crypto.spec.*;
@@ -40,6 +42,7 @@ public class EchoClientSkeleton {
         
         String serverCertificatePublicEncryptionKey = "";
         String serverCertificatePublicSignatureKey = "";
+        String serverSignature = "";
         
         // Receive Server certificate
         // Will need to verify the certificate and extract the Server public keys
@@ -50,6 +53,8 @@ public class EchoClientSkeleton {
             boolean publicKey = false;
             //This variable determines whether or not we have read the first public key already.
             boolean readFirstKey = false;
+            
+            boolean readSignature = false;
             
             while (!"-----END SIGNATURE-----".equals(line)) {
             	line = in.readLine();
@@ -65,6 +70,11 @@ public class EchoClientSkeleton {
             		continue;
             	}
             	
+            	else if("-----BEGIN SIGNATURE-----".equals(line)){
+            		readSignature = true;
+            		continue;
+            	}
+            	
             	if(publicKey){
             		//If we haven't finished reading the first key, continue adding it to the first key string
             		if(!readFirstKey) 
@@ -74,13 +84,19 @@ public class EchoClientSkeleton {
             		else 
             			serverCertificatePublicSignatureKey += line;
             	}
+            	
+            	else if(readSignature){
+            		serverSignature += line;
+            	}
             }
+            
+            readSignature = false;
         } catch (IOException e) {
             System.out.println("problem reading the certificate from server");
             return;
         }
 
-        String clientEncryptionPrivateKey = "";
+        String clientEncryptionPublicKey = "";
 
         try {   
             // read and send certificate to server
@@ -107,17 +123,16 @@ public class EchoClientSkeleton {
                 
                 else if(readingKey){
                 	if(!readEncryptionKey)
-                		clientEncryptionPrivateKey += line;
+                		clientEncryptionPublicKey += line;
                 }
-                
-                
-                
             }
             out.flush();
         } catch (FileNotFoundException e){
             System.out.println("certificate file not found");
             return;
         }
+        
+        
         try {
         	
             // initialize object streams
@@ -125,21 +140,32 @@ public class EchoClientSkeleton {
             objectInput = new ObjectInputStream(socket.getInputStream());
             // receive encrypted random bytes from server
             byte[] encryptedBytes = (byte[]) objectInput.readObject();
-            String encryptedString = Base64.getEncoder().encodeToString(encryptedBytes);
             
             //Decrypt the random bytes
-//            byte[] keyBytes = clientEncryptionPrivateKey.getBytes();
-            byte[] keyBytes = serverCertificatePublicEncryptionKey.getBytes();
-
             Cipher decryptCipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
-            SecretKeySpec privateKey = new SecretKeySpec(keyBytes, "AES");
-            decryptCipher.init(Cipher.DECRYPT_MODE, privateKey);
+            //Use the client's private encryption key to decrypt
+            PrivateKey privKey = PemUtils.readPrivateKey("MarcoLopezClientEncryptPrivate.pem");
+            decryptCipher.init(Cipher.DECRYPT_MODE, privKey);
             
             byte[] decryptedRandomBytes = decryptCipher.doFinal(encryptedBytes); 
             
             // receive signature of hash of random bytes from server
             byte[] signatureBytes = (byte[]) objectInput.readObject();
             
+            try {
+                Signature sig = Signature.getInstance("SHA1withRSA");
+                PublicKey pubKey = PemUtils.readPublicKey("MarcoLopezClientSignPublic.pem");
+                
+                sig.initVerify(pubKey);
+                sig.update(decryptedRandomBytes);
+                if (sig.verify(Base64.getDecoder().decode(serverSignature))) {
+                    System.out.println("Signature verification succeeded");
+                } else {
+                    System.out.println("Signature verification failed");
+                }
+            } catch (NoSuchAlgorithmException | InvalidKeyException | SignatureException e) {
+                System.out.println("problem verifying signature: " + e);
+            }
             // will need to verify the signature and decrypt the random bytes
             
             
