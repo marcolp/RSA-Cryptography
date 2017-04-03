@@ -86,7 +86,7 @@ public class CryptoEchoClient {
                 	
                 	String decryptedStr = new String(decryptingCipher.doFinal(bytesToDecrypt));
                 	
-                    System.out.println(bytesToDecrypt);
+                    System.out.println(decryptedStr);
                 }
             }
         } catch (Exception e) {
