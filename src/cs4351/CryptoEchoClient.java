@@ -63,7 +63,8 @@ public class CryptoEchoClient {
             objectOutput.writeObject(iv); 
             
             Cipher decryptingCipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
-            decryptingCipher.init(Cipher.DECRYPT_MODE, secretKey, new IvParameterSpec(iv));
+            byte[] iv2 = (byte[])objectInput.readObject();
+            decryptingCipher.init(Cipher.DECRYPT_MODE, secretKey, new IvParameterSpec(iv2));
             
             
             System.out.println("Starting messages to the server. Type messages, type BYE to end");            
