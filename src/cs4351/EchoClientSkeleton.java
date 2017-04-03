@@ -11,9 +11,10 @@ public class EchoClientSkeleton {
     // This code includes socket code originally written 
     // by Dr. Yoonsik Cheon at least 10 years ago.
     // This version used for Computer Security, Spring 2017.    
+	// Modified by Marco Lopez for Computer Security Spring 2017
     public static void main(String[] args) {
 
-        String host = "localhost";
+        String host = "172.19.152.11";
         BufferedReader in; // for reading strings from socket
         PrintWriter out;   // for writing strings to socket
         ObjectInputStream objectInput;   // for reading objects from socket        
@@ -30,31 +31,87 @@ public class EchoClientSkeleton {
             out = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()));
         } catch (IOException e) {
             System.out.println("socket initialization error");
+            System.out.println(e);
             return;
         }
         // Send hello to server
         out.println("hello");
         out.flush();
+        
+        String serverCertificatePublicEncryptionKey = "";
+        String serverCertificatePublicSignatureKey = "";
+        
         // Receive Server certificate
         // Will need to verify the certificate and extract the Server public keys
         try {
             String line = in.readLine();
+            
+            //This variable determines whether or not a public key is being read.
+            boolean publicKey = false;
+            //This variable determines whether or not we have read the first public key already.
+            boolean readFirstKey = false;
+            
             while (!"-----END SIGNATURE-----".equals(line)) {
-                line = in.readLine();
+            	line = in.readLine();
+            	
+            	if("-----BEGIN PUBLIC KEY-----".equals(line)){
+            		publicKey = true;
+            		continue;
+            	}
+                
+            	else if("-----END PUBLIC KEY-----".equals(line)){
+            		publicKey = false;
+            		readFirstKey = true;
+            		continue;
+            	}
+            	
+            	if(publicKey){
+            		//If we haven't finished reading the first key, continue adding it to the first key string
+            		if(!readFirstKey) 
+            			serverCertificatePublicEncryptionKey += line;
+            		
+            		//Otherwise add it to the second key string
+            		else 
+            			serverCertificatePublicSignatureKey += line;
+            	}
             }
         } catch (IOException e) {
             System.out.println("problem reading the certificate from server");
             return;
         }
 
+        String clientEncryptionPrivateKey = "";
+
         try {   
             // read and send certificate to server
-            File file = new File("client1Certificate.txt");
+            File file = new File("MarcoLopezClientCertificate.txt");
             Scanner input = new Scanner(file);
             String line;
+            
+            boolean readingKey = false;
+            boolean readEncryptionKey = false;
+            
             while (input.hasNextLine()) {
                 line = input.nextLine();
                 out.println(line);
+               
+                if("-----BEGIN PUBLIC KEY-----".equals(line)){
+                	readingKey = true;
+                }
+                
+                else if("-----END PUBLIC KEY-----".equals(line)){
+                	readingKey = false;
+                	readEncryptionKey = true;
+                	
+                }
+                
+                else if(readingKey){
+                	if(!readEncryptionKey)
+                		clientEncryptionPrivateKey += line;
+                }
+                
+                
+                
             }
             out.flush();
         } catch (FileNotFoundException e){
@@ -62,17 +119,33 @@ public class EchoClientSkeleton {
             return;
         }
         try {
+        	
             // initialize object streams
             objectOutput = new ObjectOutputStream(socket.getOutputStream());
             objectInput = new ObjectInputStream(socket.getInputStream());
             // receive encrypted random bytes from server
             byte[] encryptedBytes = (byte[]) objectInput.readObject();
+            String encryptedString = Base64.getEncoder().encodeToString(encryptedBytes);
+            
+            //Decrypt the random bytes
+//            byte[] keyBytes = clientEncryptionPrivateKey.getBytes();
+            byte[] keyBytes = serverCertificatePublicEncryptionKey.getBytes();
+
+            Cipher decryptCipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
+            SecretKeySpec privateKey = new SecretKeySpec(keyBytes, "AES");
+            decryptCipher.init(Cipher.DECRYPT_MODE, privateKey);
+            
+            byte[] decryptedRandomBytes = decryptCipher.doFinal(encryptedBytes); 
+            
             // receive signature of hash of random bytes from server
             byte[] signatureBytes = (byte[]) objectInput.readObject();
+            
             // will need to verify the signature and decrypt the random bytes
             
-        } catch (IOException | ClassNotFoundException ex) { 
+            
+        } catch (IOException | ClassNotFoundException | InvalidKeyException | NoSuchAlgorithmException | NoSuchPaddingException | IllegalBlockSizeException | BadPaddingException ex) { 
             System.out.println("Problem with receiving random bytes from server");
+            System.err.println(ex);
             return;
         }
         // generate random bytes for shared secret
