@@ -89,6 +89,7 @@ public class CryptoMultiEchoServer {
                 
                 Cipher encrpytingCipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
                 encrpytingCipher.init(Cipher.ENCRYPT_MODE, secretKey);
+                objectOutput.writeObject(encrpytingCipher.getIV());
                 
 //                SecretKeySpec encryptionKey = new SecretKeySpec(randomBytes, "AES");
 //                if(encryptionKey == secretKey) System.out.println("==");
