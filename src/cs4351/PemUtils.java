@@ -96,6 +96,7 @@ public class PemUtils {
             }
         } catch (Exception e) {
             System.out.println("Could not open file");
+            System.out.println(e);
         }
         byte[] keyBytes = Base64.getDecoder().decode(contents);
         PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(keyBytes);

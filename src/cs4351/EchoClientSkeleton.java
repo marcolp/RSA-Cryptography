@@ -96,6 +96,8 @@ public class EchoClientSkeleton {
             return;
         }
 
+        
+        
         String clientEncryptionPublicKey = "";
 
         try {   
@@ -153,12 +155,12 @@ public class EchoClientSkeleton {
             byte[] signatureBytes = (byte[]) objectInput.readObject();
             
             try {
-                Signature sig = Signature.getInstance("SHA1withRSA");
-                PublicKey pubKey = PemUtils.readPublicKey("MarcoLopezClientSignPublic.pem");
+                Signature sig = Signature.getInstance("SHA256withRSA");
+                PublicKey pubKey = PemUtils.readPublicKey("CAPublicKey.pem");
                 
                 sig.initVerify(pubKey);
                 sig.update(decryptedRandomBytes);
-                if (sig.verify(Base64.getDecoder().decode(serverSignature))) {
+                if (sig.verify(Base64.getDecoder().decode(serverSignature.getBytes()))) {
                     System.out.println("Signature verification succeeded");
                 } else {
                     System.out.println("Signature verification failed");
@@ -167,7 +169,6 @@ public class EchoClientSkeleton {
                 System.out.println("problem verifying signature: " + e);
             }
             // will need to verify the signature and decrypt the random bytes
-            
             
         } catch (IOException | ClassNotFoundException | InvalidKeyException | NoSuchAlgorithmException | NoSuchPaddingException | IllegalBlockSizeException | BadPaddingException ex) { 
             System.out.println("Problem with receiving random bytes from server");
