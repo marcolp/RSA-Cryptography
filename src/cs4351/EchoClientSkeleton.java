@@ -169,22 +169,16 @@ public class EchoClientSkeleton {
 			byte[] signatureBytes = (byte[]) objectInput.readObject();
 
 			try {
-				Signature sig = Signature.getInstance("SHA1withRSA");
-
-				//            PublicKey pubKey = PemUtils.readPublicKey("CAPublicKey.pem");
-
 				byte[] byteKey = Base64.getDecoder().decode(serverCertificatePublicSignatureKey.getBytes());
 				X509EncodedKeySpec X509publicKey = new X509EncodedKeySpec(byteKey);
 				KeyFactory kf = KeyFactory.getInstance("RSA");
 
-				PublicKey pubKey;
+				PublicKey pubKey = kf.generatePublic(X509publicKey);
 
-				pubKey = kf.generatePublic(X509publicKey);
-
-
-				sig.initVerify(pubKey);
-				sig.update(decryptedRandomBytes);
-				if (sig.verify(Base64.getDecoder().decode(serverSignature))) {
+				Signature sig = Signature.getInstance("SHA256withRSA"); //Initialize with SHA256 because according the assignment, the server hashes with SHA256
+				sig.initVerify(pubKey);			  						//Public key generated from certificate
+				sig.update(decryptedRandomBytes); 						//Message to verify signature for
+				if (sig.verify(Base64.getDecoder().decode(signatureBytes))) {
 					System.out.println("Signature verification succeeded");
 				} else {
 					System.out.println("Signature verification failed");
