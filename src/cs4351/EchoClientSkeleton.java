@@ -16,7 +16,7 @@ public class EchoClientSkeleton {
 	// Modified by Marco Lopez for Computer Security Spring 2017
 	public static void main(String[] args) {
 
-		String host = "172.19.152.11";
+		String host = "172.19.154.68";
 		BufferedReader in; // for reading strings from socket
 		PrintWriter out;   // for writing strings to socket
 		ObjectInputStream objectInput;   // for reading objects from socket        
@@ -164,6 +164,12 @@ public class EchoClientSkeleton {
 			decryptCipher.init(Cipher.DECRYPT_MODE, privKey);
 
 			byte[] decryptedRandomBytes = decryptCipher.doFinal(encryptedBytes); 
+			byte[] hashedDecryptedRandomBytes;
+			
+			//Hash the random bytes
+			MessageDigest md = MessageDigest.getInstance("SHA-256");
+			md.update(decryptedRandomBytes);
+			hashedDecryptedRandomBytes = md.digest();
 
 			// receive signature of hash of random bytes from server
 			byte[] signatureBytes = (byte[]) objectInput.readObject();
@@ -177,7 +183,7 @@ public class EchoClientSkeleton {
 
 				Signature sig = Signature.getInstance("SHA256withRSA"); //Initialize with SHA256 because according the assignment, the server hashes with SHA256
 				sig.initVerify(pubKey);			  						//Public key generated from certificate
-				sig.update(decryptedRandomBytes); 						//Message to verify signature for
+				sig.update(hashedDecryptedRandomBytes); 				//Message to verify signature for
 				if (sig.verify(Base64.getDecoder().decode(signatureBytes))) {
 					System.out.println("Signature verification succeeded");
 				} else {

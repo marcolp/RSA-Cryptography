@@ -41,4 +41,32 @@ public class Verify {
             System.out.println("problem verifying signature: " + e);
         }
     }
+    
+    public static boolean verifySignature(String message, String filename, String signature){
+    	File file;
+        PublicKey pubKey;
+        String messageSigned = message;
+        
+        System.out.println("Verifying the signature of: \""+messageSigned+"\"");
+
+        // Read public key from file
+        pubKey = PemUtils.readPublicKey(filename);
+
+        try {
+            Signature sig = Signature.getInstance("SHA1withRSA");
+            sig.initVerify(pubKey);
+            sig.update(messageSigned.getBytes());
+            if (sig.verify(Base64.getDecoder().decode(signature))) {
+                System.out.println("Signature verification succeeded");
+                return true;
+            } else {
+                System.out.println("Signature verification failed");
+                return false;
+            }
+        } catch (NoSuchAlgorithmException | InvalidKeyException | SignatureException e) {
+            System.out.println("problem verifying signature: " + e);
+        }
+        
+        return false;
+    }
 }
