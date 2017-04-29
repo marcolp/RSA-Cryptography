@@ -154,6 +154,7 @@ public class EchoClientSkeleton {
 			// initialize object streams
 			objectOutput = new ObjectOutputStream(socket.getOutputStream());
 			objectInput = new ObjectInputStream(socket.getInputStream());
+
 			// receive encrypted random bytes from server
 			byte[] encryptedBytes = (byte[]) objectInput.readObject();
 
@@ -163,28 +164,32 @@ public class EchoClientSkeleton {
 			PrivateKey privKey = PemUtils.readPrivateKey("MarcoLopezClientEncryptPrivate.pem");
 			decryptCipher.init(Cipher.DECRYPT_MODE, privKey);
 
-			byte[] decryptedRandomBytes = decryptCipher.doFinal(encryptedBytes); 
-			byte[] hashedDecryptedRandomBytes;
-			
+			byte[] decryptedRandomBytes = decryptCipher.doFinal(encryptedBytes);
+
+
+			byte[] hashedBytes;
+
+			// receive signature of hash of random bytes from server
+			byte[] signedBytes = (byte[]) objectInput.readObject();
+
 			//Hash the random bytes
 			MessageDigest md = MessageDigest.getInstance("SHA-256");
 			md.update(decryptedRandomBytes);
-			hashedDecryptedRandomBytes = md.digest();
+			hashedBytes = md.digest();
 
-			// receive signature of hash of random bytes from server
-			byte[] signatureBytes = (byte[]) objectInput.readObject();
 
 			try {
-				byte[] byteKey = Base64.getDecoder().decode(serverCertificatePublicSignatureKey.getBytes());
+				byte[] byteKey = Base64.getDecoder().decode(serverCertificatePublicSignatureKey);
 				X509EncodedKeySpec X509publicKey = new X509EncodedKeySpec(byteKey);
 				KeyFactory kf = KeyFactory.getInstance("RSA");
 
 				PublicKey pubKey = kf.generatePublic(X509publicKey);
 
-				Signature sig = Signature.getInstance("SHA256withRSA"); //Initialize with SHA256 because according the assignment, the server hashes with SHA256
+				Signature sig = Signature.getInstance("SHA1withRSA"); //Initialize with SHA256 because according the assignment, the server hashes with SHA256
 				sig.initVerify(pubKey);			  						//Public key generated from certificate
-				sig.update(hashedDecryptedRandomBytes); 				//Message to verify signature for
-				if (sig.verify(Base64.getDecoder().decode(signatureBytes))) {
+//				sig.initVerify(PemUtils.readPublicKey("CapublicKey.pem")); //Server public key
+				sig.update(hashedBytes); 								//Message to verify signature for
+				if (sig.verify(signedBytes)) {
 					System.out.println("Signature verification succeeded");
 				} else {
 					System.out.println("Signature verification failed");
