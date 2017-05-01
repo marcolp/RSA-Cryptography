@@ -194,7 +194,7 @@ public class EchoServerSkeleton {
             Cipher decryptCipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
             //Use the server's private encryption key to decrypt
             PrivateKey serverPrivateEncryptKey = PemUtils.readPrivateKey("MarcoLopezServerEncryptPrivate.pem");
-            decryptCipher.init(Cipher.DECRYPT_MODE, clientPrivateEncryptKey);
+            decryptCipher.init(Cipher.DECRYPT_MODE, serverPrivateEncryptKey);
             clientRandomBytes = decryptCipher.doFinal(clientRandomEncryptedBytes);
 
             //Receive the client's hashed signed bytes
@@ -211,7 +211,7 @@ public class EchoServerSkeleton {
 
             Signature sig = Signature.getInstance("SHA1withRSA");
             sig.initVerify(serverPublicSignKey);                    //Public key generated from certificate
-            sig.update(hashedBytes);                                //Message to verify signature for
+            sig.update(clientHashedBytes);                                //Message to verify signature for
             if (sig.verify(clientHashedSignedBytes)) {
                 System.out.println("Signature verification succeeded");
             } else {
@@ -263,7 +263,7 @@ public class EchoServerSkeleton {
             byte[] clientIV = (byte[]) objectInput.readObject();
 
             // initialize with a specific vector instead of a random one
-            decryptingCipher.init(Cipher.ENCRYPT_MODE, secretKey, new IvParameterSpec(clientIV) );
+            decryptingCipher.init(Cipher.DECRYPT_MODE, secretKey, new IvParameterSpec(clientIV) );
 
 
             boolean done = false;

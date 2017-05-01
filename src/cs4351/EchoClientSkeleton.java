@@ -18,8 +18,10 @@ public class EchoClientSkeleton {
     // Modified by Marco Lopez for Computer Security Spring 2017
     public static void main(String[] args) {
 
-        String host = "172.19.154.68";
+        String UTEPhost = "172.19.154.68";
         String localhost = "127.0.0.1";
+        String myHost = "192.168.1.68";
+        String caroHost = "129.108.148.86";
         BufferedReader in; // for reading strings from socket
         PrintWriter out;   // for writing strings to socket
         ObjectInputStream objectInput;   // for reading objects from socket
@@ -32,7 +34,7 @@ public class EchoClientSkeleton {
         // Handshake
         try {
             // socket initialization
-            socket = new Socket(localhost, 8008);
+            socket = new Socket(caroHost, 8008);
             in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             out = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()));
         } catch (IOException e) {
@@ -47,6 +49,7 @@ public class EchoClientSkeleton {
         String serverCertificatePublicEncryptionKey = "";
         String serverCertificatePublicSignatureKey = "";
         String serverSignature = "";
+        String contents = "";
 
         // Receive Server certificate
         // Will need to verify the certificate and extract the Server public keys
@@ -60,22 +63,25 @@ public class EchoClientSkeleton {
 
             boolean readSignature = false;
             line = in.readLine();
-
+            contents += line;
             while (!"-----END SIGNATURE-----".equals(line)) {
 
                 if ("-----BEGIN PUBLIC KEY-----".equals(line)) {
                     publicKey = true;
                     line = in.readLine();
+                    contents += line;
                     continue;
                 } else if ("-----END PUBLIC KEY-----".equals(line)) {
 
                     publicKey = false;
                     readFirstKey = true;
                     line = in.readLine();
+                    contents += line;
                     continue;
                 } else if ("-----BEGIN SIGNATURE-----".equals(line)) {
                     readSignature = true;
                     line = in.readLine();
+                    contents += line;
                     continue;
                 }
 
@@ -92,8 +98,10 @@ public class EchoClientSkeleton {
                 }
 
                 line = in.readLine();
-
+                contents += line;
             }
+
+            verifyCertificate(contents, serverSignature);
 
             readSignature = false;
         } catch (IOException e) {
@@ -161,7 +169,6 @@ public class EchoClientSkeleton {
             serverRandomBytes = decryptCipher.doFinal(encryptedBytes);
 
 
-
             // receive signature of hash of random bytes from server
             byte[] signedBytes = (byte[]) objectInput.readObject();
 
@@ -178,9 +185,9 @@ public class EchoClientSkeleton {
             sig.initVerify(serverPublicSignKey);                    //Public key generated from certificate
             sig.update(hashedBytes);                                //Message to verify signature for
             if (sig.verify(signedBytes)) {
-                System.out.println("Signature verification succeeded");
+                System.out.println("Random Bytes signature verification succeeded");
             } else {
-                System.out.println("Signature verification failed");
+                System.out.println("Random Bytes signature verification failed");
             }
 
         } catch (IOException | ClassNotFoundException | InvalidKeyException | NoSuchAlgorithmException | NoSuchPaddingException | IllegalBlockSizeException | BadPaddingException | SignatureException ex) {
@@ -189,7 +196,6 @@ public class EchoClientSkeleton {
             ex.printStackTrace();
             return;
         }
-
 
 
         // generate random bytes for shared secret
@@ -293,7 +299,7 @@ public class EchoClientSkeleton {
             Scanner userInput = new Scanner(System.in);
 
             //We should be receiving the server's IV for its encrypting cipher
-            byte[] serverIV = (byte[])objectInput.readObject();
+            byte[] serverIV = (byte[]) objectInput.readObject();
 
             // we will use AES encryption, CBC chaining and PCS5 block padding
             Cipher decryptingCipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
@@ -318,7 +324,7 @@ public class EchoClientSkeleton {
                     encryptedBytes = (byte[]) objectInput.readObject();
 
                     String str = new String(decryptingCipher.doFinal(encryptedBytes));
-                    System.out.println("This is what the client decrypted: " +str);
+                    System.out.println("This is what the client decrypted: " + str);
                 }
             }
         } catch (IllegalBlockSizeException | BadPaddingException
@@ -336,7 +342,6 @@ public class EchoClientSkeleton {
     }
 
     /**
-     *
      * @param key
      * @return
      */
@@ -359,7 +364,6 @@ public class EchoClientSkeleton {
     }
 
     /**
-     *
      * @param key
      * @return
      */
@@ -383,11 +387,12 @@ public class EchoClientSkeleton {
 
     /**
      * Uses the client's private signature key to sign a byte message
+     *
      * @param message - to be signed
      * @return - signed byte array
      */
     @Nullable
-    private static byte[] signBytes(byte[] message){
+    private static byte[] signBytes(byte[] message) {
         Signature sig = null;
         byte[] signedMessage;
         try {
@@ -406,4 +411,98 @@ public class EchoClientSkeleton {
         return null;
     }
 
+    //Method modified from VerifyCert.java provided by Dr.Longpre
+    public static boolean verifyCertificate(ArrayList<String> certificate) {
+        System.out.println("VERIFYING Client...\n");
+        int i = 0;
+        PublicKey pubKey;
+        String contents;
+        String encryptionPK = "";
+        String signaturePK = "";
+        String signature;
+        Signature sig;
+        pubKey = PemUtils.readPublicKey("CApublicKey.pem");
+        if (pubKey == null)
+            return false;
+        try {
+            String line = certificate.get(i++);
+            if (!"-----BEGIN INFORMATION-----".equals(line)) {
+                System.out.println("expecting:-----BEGIN INFORMATION-----");
+                System.out.println("got:" + line);
+                return false;
+            }
+            contents = line + "\r\n";
+            line = certificate.get(i++);
+            while (!"-----END INFORMATION-----".equals(line)) {
+                contents += line + "\r\n";
+                line = certificate.get(i++);
+            }
+            contents += line + "\r\n";
+            line = certificate.get(i++);
+            while (!"-----END PUBLIC KEY-----".equals(line)) {
+                contents += line + "\r\n";
+                if (!"-----BEGIN PUBLIC KEY-----".equals(line)) {
+                    encryptionPK += line;
+                }
+                line = certificate.get(i++);
+            }
+            contents += line + "\r\n";
+            line = certificate.get(i++);
+            while (!"-----END PUBLIC KEY-----".equals(line)) {
+                contents += line + "\r\n";
+                if (!"-----BEGIN PUBLIC KEY-----".equals(line)) {
+                    signaturePK += line;
+                }
+                line = certificate.get(i++);
+            }
+            contents += line + "\r\n";
+            line = certificate.get(i++);
+            if (!"-----BEGIN SIGNATURE-----".equals(line)) {
+                System.out.println("expecting:-----BEGIN SIGNATURE-----");
+                System.out.println("got:" + line);
+                return false;
+            }
+            signature = certificate.get(i++);
+            line = certificate.get(i++);
+            if (!"-----END SIGNATURE-----".equals(line)) {
+                System.out.println("expecting:-----END SIGNATURE-----");
+                System.out.println("got:" + line);
+                return false;
+            }
+            return false;
+        } catch (NoSuchElementException e) {
+            System.out.println("Unexpectedly reached the end of file, " + e);
+            return false;
+        }
+    }
+
+    private static void verifyCertificate(String certificateContents, String certificateSignature) {
+        PublicKey pubKey;
+        Signature sig;
+
+        // get the public key of the signer from file
+        // Read public key from file
+        pubKey = PemUtils.readPublicKey("CApublicKey.pem");
+        if (pubKey == null)
+            return;
+
+        // verify the signature
+        try {
+            // print the actual string that was signed (for verification)
+            System.out.println(certificateContents);
+            // verify the signature
+            sig = Signature.getInstance("SHA1withRSA");
+            sig.initVerify(pubKey);
+            sig.update(certificateContents.getBytes());
+            // output the result of the verification
+            // System.out.println("Signature:"+signature);
+            if (sig.verify(Base64.getDecoder().decode(certificateSignature))) {
+                System.out.println("Server certificate signature verification succeeded");
+            } else {
+                System.out.println("Server certificate signature verification failed");
+            }
+        } catch (NoSuchAlgorithmException | InvalidKeyException | SignatureException e) {
+            System.out.println("error occurred while trying to verify signature" + e);
+        }
+    }
 }
