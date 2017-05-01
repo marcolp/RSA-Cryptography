@@ -99,11 +99,12 @@ public class EchoServerSkeleton {
         String clientCertificatePublicEncryptionKey = "";
         String clientCertificatePublicSignatureKey = "";
         String clientSignature = "";
+        String contents = "";
 
-        // Receive client certificate
+        // Receive Server certificate
         // Will need to verify the certificate and extract the Server public keys
         try {
-            String line;
+            String line = in.readLine();
 
             //This variable determines whether or not a public key is being read.
             boolean publicKey = false;
@@ -111,27 +112,32 @@ public class EchoServerSkeleton {
             boolean readFirstKey = false;
 
             boolean readSignature = false;
-            line = in.readLine();
-
+//			contents += line+"\r\n";
             while (!"-----END SIGNATURE-----".equals(line)) {
+
+//				contents += line+ "\r\n";
+                if(!line.equals("-----END SIGNATURE-----") && !line.equals("-----BEGIN SIGNATURE-----") && !readSignature)
+                    contents += line + "\r\n";
 
                 if ("-----BEGIN PUBLIC KEY-----".equals(line)) {
                     publicKey = true;
-                    line = in.readLine();
-                    continue;
+//					contents += line + "\r\n";
+//					line = in.readLine();
+//					continue;
                 } else if ("-----END PUBLIC KEY-----".equals(line)) {
 
                     publicKey = false;
                     readFirstKey = true;
-                    line = in.readLine();
-                    continue;
+//					contents += line+ "\r\n";
+//					line = in.readLine();
+//					continue;
                 } else if ("-----BEGIN SIGNATURE-----".equals(line)) {
                     readSignature = true;
-                    line = in.readLine();
-                    continue;
+//					line = in.readLine();
+//					continue;
                 }
 
-                if (publicKey) {
+                else if (publicKey) {
                     //If we haven't finished reading the first key, continue adding it to the first key string
                     if (!readFirstKey)
                         clientCertificatePublicEncryptionKey += line;
@@ -139,12 +145,16 @@ public class EchoServerSkeleton {
                         //Otherwise add it to the second key string
                     else
                         clientCertificatePublicSignatureKey += line;
-                } else if (readSignature) {
+                }
+                else if (readSignature) {
                     clientSignature += line;
                 }
+
                 line = in.readLine();
 
             }
+
+            verifyCertificate(contents, clientSignature);
 
             readSignature = false;
         } catch (IOException e) {
@@ -213,9 +223,9 @@ public class EchoServerSkeleton {
             sig.initVerify(serverPublicSignKey);                    //Public key generated from certificate
             sig.update(clientHashedBytes);                                //Message to verify signature for
             if (sig.verify(clientHashedSignedBytes)) {
-                System.out.println("Signature verification succeeded");
+                System.out.println("Client signature verification succeeded");
             } else {
-                System.out.println("Signature verification failed");
+                System.out.println("Client signature verification failed");
             }
 
         } catch (IOException | ClassNotFoundException | InvalidKeyException | NoSuchAlgorithmException | NoSuchPaddingException | IllegalBlockSizeException | BadPaddingException | SignatureException ex) {
@@ -371,6 +381,36 @@ public class EchoServerSkeleton {
             e.printStackTrace();
         }
         return null;
+    }
+
+    private static void verifyCertificate(String certificateContents, String certificateSignature) {
+        PublicKey pubKey;
+        Signature sig;
+
+        // get the public key of the signer from file
+        // Read public key from file
+        pubKey = PemUtils.readPublicKey("CApublicKey.pem");
+        if (pubKey == null)
+            return;
+
+        // verify the signature
+        try {
+            // print the actual string that was signed (for verification)
+//			System.out.println(certificateContents);
+            // verify the signature
+            sig = Signature.getInstance("SHA1withRSA");
+            sig.initVerify(pubKey);
+            sig.update(certificateContents.getBytes());
+            // output the result of the verification
+            // System.out.println("Signature:"+signature);
+            if (sig.verify(Base64.getDecoder().decode(certificateSignature))) {
+                System.out.println("Client certificate signature verification succeeded");
+            } else {
+                System.out.println("Client certificate signature verification failed");
+            }
+        } catch (NoSuchAlgorithmException | InvalidKeyException | SignatureException e) {
+            System.out.println("error occurred while trying to verify signature" + e);
+        }
     }
 
 }
