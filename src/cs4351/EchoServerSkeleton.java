@@ -2,16 +2,20 @@ package cs4351;
 
 import org.jetbrains.annotations.Nullable;
 
+import javax.crypto.*;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 import java.io.*;
-import java.net.*;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.security.*;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
-import java.util.*;
-import javax.crypto.*;
-import javax.crypto.spec.*;
+import java.util.Base64;
+import java.util.Random;
+import java.util.Scanner;
 
-public class EchoClientSkeleton {
+public class EchoServerSkeleton {
     // This code includes socket code originally written
     // by Dr. Yoonsik Cheon at least 10 years ago.
     // This version used for Computer Security, Spring 2017.
@@ -31,26 +35,75 @@ public class EchoClientSkeleton {
         // Handshake
         try {
             // socket initialization
-            socket = new Socket("localhost", 8008);
+            ServerSocket connections = new ServerSocket(8008);
+            socket = connections.accept();
             in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             out = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()));
+
+            // Receive hello from client
+            String firstMessage = in.readLine();
+            if (!firstMessage.equals("hello")) {
+                System.out.println("Wrong first message");
+                return;
+            }
+
         } catch (IOException e) {
             System.out.println("socket initialization error");
             System.out.println(e);
             return;
         }
-        // Send hello to server
-        out.println("hello");
-        out.flush();
 
-        String serverCertificatePublicEncryptionKey = "";
-        String serverCertificatePublicSignatureKey = "";
-        String serverSignature = "";
 
-        // Receive Server certificate
+        String serverEncryptionPublicKey = "";
+
+        try {
+            // read and send certificate to client
+            File file = new File("MarcoLopezServerCertificate.txt");
+            Scanner input = new Scanner(file);
+            String line;
+
+            boolean readingKey = false;
+            boolean readEncryptionKey = false;
+
+            line = input.nextLine();
+
+            while (input.hasNextLine()) {
+                out.println(line);
+
+                if ("-----BEGIN PUBLIC KEY-----".equals(line)) {
+                    readingKey = true;
+                    line = input.nextLine();
+                    continue;
+                } else if ("-----END PUBLIC KEY-----".equals(line)) {
+                    readingKey = false;
+                    readEncryptionKey = true;
+                    line = input.nextLine();
+                    continue;
+                }
+
+                if (readingKey) {
+                    if (!readEncryptionKey)
+                        serverEncryptionPublicKey += line;
+                }
+
+                line = input.nextLine();
+            }
+            out.println(line);
+            out.flush();
+        } catch (FileNotFoundException e) {
+            System.out.println("certificate file not found");
+            return;
+        }
+
+
+        String clientCertificatePublicEncryptionKey = "";
+        String clientCertificatePublicSignatureKey = "";
+        String clientSignature = "";
+
+        // Receive client certificate
         // Will need to verify the certificate and extract the Server public keys
         try {
-            String line = in.readLine();
+            String line;
 
             //This variable determines whether or not a public key is being read.
             boolean publicKey = false;
@@ -81,15 +134,14 @@ public class EchoClientSkeleton {
                 if (publicKey) {
                     //If we haven't finished reading the first key, continue adding it to the first key string
                     if (!readFirstKey)
-                        serverCertificatePublicEncryptionKey += line;
+                        clientCertificatePublicEncryptionKey += line;
 
                         //Otherwise add it to the second key string
                     else
-                        serverCertificatePublicSignatureKey += line;
+                        clientCertificatePublicSignatureKey += line;
                 } else if (readSignature) {
-                    serverSignature += line;
+                    clientSignature += line;
                 }
-
                 line = in.readLine();
 
             }
@@ -101,68 +153,25 @@ public class EchoClientSkeleton {
         }
 
 
-        String clientEncryptionPublicKey = "";
-
         try {
-            // read and send certificate to server
-            File file = new File("MarcoLopezClientCertificate.txt");
-            Scanner input = new Scanner(file);
-            String line;
-
-            boolean readingKey = false;
-            boolean readEncryptionKey = false;
-
-            line = input.nextLine();
-
-            while (input.hasNextLine()) {
-                out.println(line);
-
-                if ("-----BEGIN PUBLIC KEY-----".equals(line)) {
-                    readingKey = true;
-                    line = input.nextLine();
-                    continue;
-                } else if ("-----END PUBLIC KEY-----".equals(line)) {
-                    readingKey = false;
-                    readEncryptionKey = true;
-                    line = input.nextLine();
-                    continue;
-                }
-
-                if (readingKey) {
-                    if (!readEncryptionKey)
-                        clientEncryptionPublicKey += line;
-                }
-
-                line = input.nextLine();
-            }
-            out.println(line);
-            out.flush();
-        } catch (FileNotFoundException e) {
-            System.out.println("certificate file not found");
-            return;
-        }
-
-
-        try {
-
             // initialize object streams
             objectOutput = new ObjectOutputStream(socket.getOutputStream());
             objectInput = new ObjectInputStream(socket.getInputStream());
 
-            // receive encrypted random bytes from server
-            byte[] encryptedBytes = (byte[]) objectInput.readObject();
 
-            //Decrypt the random bytes
-            Cipher decryptCipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
-            //Use the client's private encryption key to decrypt
-            PrivateKey clientPrivateEncryptKey = PemUtils.readPrivateKey("MarcoLopezClientEncryptPrivate.pem");
-            decryptCipher.init(Cipher.DECRYPT_MODE, clientPrivateEncryptKey);
-            serverRandomBytes = decryptCipher.doFinal(encryptedBytes);
+            //==============================Create server random bytes==============================
+            serverRandomBytes = new byte[8];
+            new Random().nextBytes(serverRandomBytes);
 
+            //Encrypt the random bytes
+            Cipher encryptCipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
+            //Use the client's public encryption key to encrypt
+            PublicKey clientPrivateEncryptKey = makePublicKeyFromString(clientCertificatePublicEncryptionKey);
+            encryptCipher.init(Cipher.ENCRYPT_MODE, clientPrivateEncryptKey);
+            byte[] serverRandomBytesEncrypted = encryptCipher.doFinal(serverRandomBytes);
 
-
-            // receive signature of hash of random bytes from server
-            byte[] signedBytes = (byte[]) objectInput.readObject();
+            // send encrypted random bytes to client
+            objectOutput.writeObject(serverRandomBytesEncrypted);
 
             //Hash the random bytes
             MessageDigest md = MessageDigest.getInstance("SHA-256");
@@ -170,13 +179,40 @@ public class EchoClientSkeleton {
             byte[] hashedBytes;
             hashedBytes = md.digest();
 
+            //Sign the hashed bytes
+            byte[] serverHashedSignedRandomBytes = signBytes(hashedBytes);
 
-            PublicKey serverPublicSignKey = makePublicKeyFromString(serverCertificatePublicSignatureKey);
+            //Send the hashed signed random bytes to the client
+            objectOutput.writeObject(serverHashedSignedRandomBytes);
+
+
+
+            //==============================Receive the client's encrypted random bytes==============================
+            byte[] clientRandomEncryptedBytes = (byte[]) objectInput.readObject();
+
+            //Decrypt the random bytes
+            Cipher decryptCipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
+            //Use the server's private encryption key to decrypt
+            PrivateKey serverPrivateEncryptKey = PemUtils.readPrivateKey("MarcoLopezServerEncryptPrivate.pem");
+            decryptCipher.init(Cipher.DECRYPT_MODE, clientPrivateEncryptKey);
+            clientRandomBytes = decryptCipher.doFinal(clientRandomEncryptedBytes);
+
+            //Receive the client's hashed signed bytes
+            byte[] clientHashedSignedBytes = (byte[]) objectInput.readObject();
+
+
+            //Hash the random bytes
+            md.update(clientRandomBytes);
+            byte[] clientHashedBytes;
+            clientHashedBytes = md.digest();
+
+
+            PublicKey serverPublicSignKey = makePublicKeyFromString(clientCertificatePublicSignatureKey);
 
             Signature sig = Signature.getInstance("SHA1withRSA");
             sig.initVerify(serverPublicSignKey);                    //Public key generated from certificate
             sig.update(hashedBytes);                                //Message to verify signature for
-            if (sig.verify(signedBytes)) {
+            if (sig.verify(clientHashedSignedBytes)) {
                 System.out.println("Signature verification succeeded");
             } else {
                 System.out.println("Signature verification failed");
@@ -191,80 +227,6 @@ public class EchoClientSkeleton {
 
 
 
-        // generate random bytes for shared secret
-        clientRandomBytes = new byte[8];
-        // the next line would initialize the byte array to random values
-        // new Random().nextBytes(clientRandomBytes);
-        // here we leave all bytes to zeroes.
-        // The server shifts to testing mode when receiving all byte
-        // values zeroes and uses all zeroes as shared secret
-        try {
-
-
-            //Create 8 random bytes to send to the server
-            new Random().nextBytes(clientRandomBytes);
-
-
-            //Encrypt the random bytes
-            Cipher encryptCipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
-            //Use the server's public encryption key to encrypt
-            PublicKey clientPrivateEncryptKey = makePublicKeyFromString(serverCertificatePublicEncryptionKey);
-            encryptCipher.init(Cipher.ENCRYPT_MODE, clientPrivateEncryptKey);
-            byte[] clientRandomBytesEncrypted = encryptCipher.doFinal(clientRandomBytes);
-
-
-            // you need to encrypt and send the the random byte array
-            // here, precalculated encrypted bytes using zeroes as shared secret
-//            byte[] encryptedBytes = {-101, 122, -50, -56, 68, -30, -48, 115,
-//                    -52, 116, -40, 43, 121, 77, -44, -89, -10, -35, 38, -45, -64,
-//                    52, 109, 72, -107, 57, 58, -16, 56, -101, -93, 51, 106, -7, 40,
-//                    72, -56, 85, -82, -110, -17, -64, 70, 57, 12, 111, -62, 117, 28,
-//                    48, -78, -84, 80, -69, 86, -14, 120, -99, -96, -69, -13, -49,
-//                    -92, -19, 1, 81, -57, 29, -5, -19, 125, 7, 13, -128, 62, 7, -6,
-//                    66, 77, -124, 127, -95, -76, -85, -80, -13, -113, 91, 53, 59,
-//                    19, 86, -1, -14, 23, 2, 127, 76, -24, -117, 76, -108, 11, -78,
-//                    -64, -94, -51, 13, -9, -44, -96, -23, -55, 22, -79, -23, -36,
-//                    42, -60, -55, -2, -52, -52, 39, -94, 53, 81, 58};
-
-            //Send the client's encrypted random bytes
-            objectOutput.writeObject(clientRandomBytesEncrypted);
-            // you need to generate a signature of the hash of the random bytes
-            // here, precalculated signature using the client secret key associated with the certificate
-
-            //Hash the random bytes
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            md.update(clientRandomBytes);
-            byte[] hashedClientBytes;
-            hashedClientBytes = md.digest();
-
-            //Sign the hashed random bytes
-            byte[] clientSignedHashedBytes = signBytes(hashedClientBytes);
-
-//            byte[] signatureBytes = {48, 17, -50, -3, 125, -10, -88, -6, -33,
-//                    10, 14, 93, 112, 14, 74, -32, -27, -56, -86, 91, -101, 87, 117,
-//                    109, 41, 1, 6, -4, -94, 47, 83, -46, 44, 76, 61, 83, 72, 36,
-//                    -127, -44, 5, -77, 121, 19, 107, 91, -123, 31, 123, -22, 114,
-//                    -79, 103, 39, 122, -122, 73, -99, -16, 22, 20, 37, 27, 14, 31,
-//                    11, 36, 12, -118, 38, 120, 47, 57, -110, -27, -14, 31, -37, 85,
-//                    -56, -108, 100, -71, 29, 26, 26, 8, -47, 49, -66, 88, 6, 73,
-//                    124, -35, 9, 16, 59, 44, -113, 62, -61, -31, 58, -116, 113, 35,
-//                    119, 5, -117, -91, -109, -8, 123, -40, -105, -96, -71, -50, 41,
-//                    78, -113, -32, -75, 36, -29, 89, -51};
-            objectOutput.writeObject(clientSignedHashedBytes);
-        } catch (IOException e) {
-            System.out.println("error computing or sending the signature for random bytes");
-            return;
-        } catch (NoSuchAlgorithmException e) {
-            e.printStackTrace();
-        } catch (BadPaddingException e) {
-            e.printStackTrace();
-        } catch (IllegalBlockSizeException e) {
-            e.printStackTrace();
-        } catch (NoSuchPaddingException e) {
-            e.printStackTrace();
-        } catch (InvalidKeyException e) {
-            e.printStackTrace();
-        }
         // initialize the shared secret with all zeroes
         // will need to generate from a combination of the server and
         // the client random bytes generated
@@ -292,7 +254,7 @@ public class EchoClientSkeleton {
             Scanner userInput = new Scanner(System.in);
 
             //We should be receiving the server's IV for its encrypting cipher
-            byte[] serverIV = (byte[])objectInput.readObject();
+            byte[] serverIV = (byte[]) objectInput.readObject();
 
             // we will use AES encryption, CBC chaining and PCS5 block padding
             Cipher decryptingCipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
@@ -317,7 +279,7 @@ public class EchoClientSkeleton {
                     encryptedBytes = (byte[]) objectInput.readObject();
 
                     String str = new String(decryptingCipher.doFinal(encryptedBytes));
-                    System.out.println("This is what we decrypted: " +str);
+                    System.out.println("This is what we decrypted: " + str);
                 }
             }
         } catch (IllegalBlockSizeException | BadPaddingException
@@ -335,7 +297,6 @@ public class EchoClientSkeleton {
     }
 
     /**
-     *
      * @param key
      * @return
      */
@@ -358,7 +319,6 @@ public class EchoClientSkeleton {
     }
 
     /**
-     *
      * @param key
      * @return
      */
@@ -382,16 +342,17 @@ public class EchoClientSkeleton {
 
     /**
      * Uses the client's private signature key to sign a byte message
+     *
      * @param message - to be signed
      * @return - signed byte array
      */
     @Nullable
-    private static byte[] signBytes(byte[] message){
-        Signature sig = null;
+    private static byte[] signBytes(byte[] message) {
+        Signature sig;
         byte[] signedMessage;
         try {
             sig = Signature.getInstance("SHA1withRSA");
-            sig.initSign(PemUtils.readPrivateKey("MarcoLopezClientSignPrivate.pem"));
+            sig.initSign(PemUtils.readPrivateKey("MarcoLopezServerSignPrivate.pem"));
             sig.update(message);
             signedMessage = sig.sign();
             return signedMessage;
