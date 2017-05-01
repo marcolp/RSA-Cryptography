@@ -235,13 +235,14 @@ public class EchoServerSkeleton {
         System.arraycopy(clientRandomBytes, 0, sharedSecret, 8, 8);
         SecretKey secretKey;
         try {
+            //=======================================Encrypting cipher=======================================
             // we will use AES encryption, CBC chaining and PCS5 block padding
             cipherEnc = Cipher.getInstance("AES/CBC/PKCS5Padding");
             // generate an AES key derived from randomBytes array
             secretKey = new SecretKeySpec(sharedSecret, "AES");
             cipherEnc.init(Cipher.ENCRYPT_MODE, secretKey);
-            byte[] iv = cipherEnc.getIV();
-            objectOutput.writeObject(iv);
+            byte[] serverIV = cipherEnc.getIV();
+            objectOutput.writeObject(serverIV);
 
         } catch (IOException | NoSuchAlgorithmException
                 | NoSuchPaddingException | InvalidKeyException e) {
@@ -253,33 +254,39 @@ public class EchoServerSkeleton {
             System.out.println("Starting messages to the server. Type messages, type BYE to end");
             Scanner userInput = new Scanner(System.in);
 
-            //We should be receiving the server's IV for its encrypting cipher
-            byte[] serverIV = (byte[]) objectInput.readObject();
 
+            //=======================================Decrypting cipher=======================================
             // we will use AES encryption, CBC chaining and PCS5 block padding
             Cipher decryptingCipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+
+            //We should receive the client's IV
+            byte[] clientIV = (byte[]) objectInput.readObject();
+
             // initialize with a specific vector instead of a random one
-            decryptingCipher.init(Cipher.DECRYPT_MODE, secretKey, new IvParameterSpec(serverIV));
+            decryptingCipher.init(Cipher.ENCRYPT_MODE, secretKey, new IvParameterSpec(clientIV) );
 
 
             boolean done = false;
             while (!done) {
-                // Read message from the user
-                String userStr = userInput.nextLine();
-                // Encrypt the message
-                byte[] encryptedBytes = cipherEnc.doFinal(userStr.getBytes());
-                // Send encrypted message as an object to the server
-                objectOutput.writeObject(encryptedBytes);
+                // Read message from the client
+                byte[] clientMsg = (byte[]) objectInput.readObject();
+                // Decrypt the message
+                String decriptedMessage = new String(decryptingCipher.doFinal(clientMsg));
+                System.out.println("This is what the server decrypted: " + decriptedMessage);
+
                 // If user says "BYE", end session
-                if (userStr.trim().equals("BYE")) {
+                if (decriptedMessage.trim().equals("BYE")) {
                     System.out.println("client session ended");
                     done = true;
                 } else {
-                    // Wait for reply from server,
-                    encryptedBytes = (byte[]) objectInput.readObject();
+                    // Create echo message
+                    String echoMessage = "Echo: "+decriptedMessage;
 
-                    String str = new String(decryptingCipher.doFinal(encryptedBytes));
-                    System.out.println("This is what we decrypted: " + str);
+                    //Encrypt echo message
+                    byte[] encryptedEcho = cipherEnc.doFinal(echoMessage.getBytes());
+
+                    // Send the encrypted echo to the client
+                    objectOutput.writeObject(encryptedEcho);
                 }
             }
         } catch (IllegalBlockSizeException | BadPaddingException

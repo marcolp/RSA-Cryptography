@@ -19,6 +19,7 @@ public class EchoClientSkeleton {
     public static void main(String[] args) {
 
         String host = "172.19.154.68";
+        String localhost = "127.0.0.1";
         BufferedReader in; // for reading strings from socket
         PrintWriter out;   // for writing strings to socket
         ObjectInputStream objectInput;   // for reading objects from socket
@@ -31,7 +32,7 @@ public class EchoClientSkeleton {
         // Handshake
         try {
             // socket initialization
-            socket = new Socket("localhost", 8008);
+            socket = new Socket(localhost, 8008);
             in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             out = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()));
         } catch (IOException e) {
@@ -317,7 +318,7 @@ public class EchoClientSkeleton {
                     encryptedBytes = (byte[]) objectInput.readObject();
 
                     String str = new String(decryptingCipher.doFinal(encryptedBytes));
-                    System.out.println("This is what we decrypted: " +str);
+                    System.out.println("This is what the client decrypted: " +str);
                 }
             }
         } catch (IllegalBlockSizeException | BadPaddingException
