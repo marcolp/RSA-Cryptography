@@ -188,9 +188,9 @@ public class EchoClientSkeleton {
 			sig.initVerify(serverPublicSignKey);                    //Public key generated from certificate
 			sig.update(hashedBytes);                                //Message to verify signature for
 			if (sig.verify(signedBytes)) {
-				System.out.println("Random Bytes signature verification succeeded");
+				System.out.println("Server random Bytes signature verification succeeded");
 			} else {
-				System.out.println("Random Bytes signature verification failed");
+				System.out.println("Server random Bytes signature verification failed");
 			}
 
 		} catch (IOException | ClassNotFoundException | InvalidKeyException | NoSuchAlgorithmException | NoSuchPaddingException | IllegalBlockSizeException | BadPaddingException | SignatureException ex) {
